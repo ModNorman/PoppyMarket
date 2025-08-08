@@ -1,5 +1,5 @@
--- Initial schema for Poppy Market (fresh project)
--- Safe to run in Supabase SQL Editor; idempotent-ish where practical.
+-- Initial schema for Poppy Market (timestamped copy for CLI)
+-- Sourced from 001_init.sql
 
 -- Extensions
 create extension if not exists pgcrypto;
@@ -8,8 +8,8 @@ create extension if not exists pgcrypto;
 create table if not exists public.profiles (
 	id uuid primary key references auth.users(id) on delete cascade,
 	full_name text,
-	role text not null default 'seller', -- 'seller' | 'admin'
-	status text not null default 'active', -- 'active' | 'pending' | 'inactive'
+	role text not null default 'seller',
+	status text not null default 'active',
 	created_at timestamptz not null default now()
 );
 
@@ -25,31 +25,6 @@ as $$
 		where p.id = auth.uid() and p.role = 'admin'
 	);
 $$;
-
--- Policy: profiles
-do $$ begin
-	perform 1 from pg_policies where schemaname='public' and tablename='profiles' and policyname='profiles_select_self_or_admin';
-	if not found then
-		create policy "profiles_select_self_or_admin" on public.profiles
-			for select using (id = auth.uid() or public.is_admin());
-	end if;
-end $$;
-
-do $$ begin
-	perform 1 from pg_policies where schemaname='public' and tablename='profiles' and policyname='profiles_update_self_or_admin';
-	if not found then
-		create policy "profiles_update_self_or_admin" on public.profiles
-			for update using (id = auth.uid() or public.is_admin());
-	end if;
-end $$;
-
-do $$ begin
-	perform 1 from pg_policies where schemaname='public' and tablename='profiles' and policyname='profiles_insert_self';
-	if not found then
-		create policy "profiles_insert_self" on public.profiles
-			for insert with check (id = auth.uid() or public.is_admin());
-	end if;
-end $$;
 
 -- Trigger: Create profile row on new auth user
 create or replace function public.handle_new_user()
@@ -76,22 +51,10 @@ create table if not exists public.app_settings (
 	updated_at timestamptz not null default now()
 );
 alter table public.app_settings enable row level security;
-do $$ begin
-	perform 1 from pg_policies where schemaname='public' and tablename='app_settings' and policyname='app_settings_select_all_auth';
-	if not found then
-		create policy "app_settings_select_all_auth" on public.app_settings for select using (auth.role() = 'authenticated' or public.is_admin());
-	end if;
-end $$;
-do $$ begin
-	perform 1 from pg_policies where schemaname='public' and tablename='app_settings' and policyname='app_settings_admin_write';
-	if not found then
-		create policy "app_settings_admin_write" on public.app_settings for all using (public.is_admin()) with check (public.is_admin());
-	end if;
-end $$;
 
 -- Bonus configs
 create table if not exists public.bonus_configs (
-	cadence text primary key, -- 'daily' | 'weekly' | 'monthly'
+	cadence text primary key,
 	min_duration_hours numeric not null default 0,
 	min_branded_sold int not null default 0,
 	min_freesize_sold int not null default 0,
@@ -99,18 +62,6 @@ create table if not exists public.bonus_configs (
 	updated_at timestamptz not null default now()
 );
 alter table public.bonus_configs enable row level security;
-do $$ begin
-	perform 1 from pg_policies where schemaname='public' and tablename='bonus_configs' and policyname='bonus_configs_select_all_auth';
-	if not found then
-		create policy "bonus_configs_select_all_auth" on public.bonus_configs for select using (auth.role() = 'authenticated' or public.is_admin());
-	end if;
-end $$;
-do $$ begin
-	perform 1 from pg_policies where schemaname='public' and tablename='bonus_configs' and policyname='bonus_configs_admin_write';
-	if not found then
-		create policy "bonus_configs_admin_write" on public.bonus_configs for all using (public.is_admin()) with check (public.is_admin());
-	end if;
-end $$;
 
 -- Logged sessions
 create table if not exists public.logged_sessions (
@@ -124,7 +75,6 @@ create table if not exists public.logged_sessions (
 	created_at timestamptz not null default now()
 );
 
--- Auto-compute duration
 create or replace function public.set_duration_minutes()
 returns trigger language plpgsql as $$
 begin
@@ -139,18 +89,6 @@ create trigger trg_set_duration before insert or update on public.logged_session
 for each row execute function public.set_duration_minutes();
 
 alter table public.logged_sessions enable row level security;
-do $$ begin
-	perform 1 from pg_policies where schemaname='public' and tablename='logged_sessions' and policyname='logged_sessions_select_self_or_admin';
-	if not found then
-		create policy "logged_sessions_select_self_or_admin" on public.logged_sessions for select using (seller_id = auth.uid() or public.is_admin());
-	end if;
-end $$;
-do $$ begin
-	perform 1 from pg_policies where schemaname='public' and tablename='logged_sessions' and policyname='logged_sessions_write_self_or_admin';
-	if not found then
-		create policy "logged_sessions_write_self_or_admin" on public.logged_sessions for all using (seller_id = auth.uid() or public.is_admin()) with check (seller_id = auth.uid() or public.is_admin());
-	end if;
-end $$;
 
 -- Payout runs
 create table if not exists public.payout_runs (
@@ -170,18 +108,6 @@ create table if not exists public.payout_runs (
 	constraint unique_run unique (seller_id, start_date, end_date)
 );
 alter table public.payout_runs enable row level security;
-do $$ begin
-	perform 1 from pg_policies where schemaname='public' and tablename='payout_runs' and policyname='payout_runs_select_self_or_admin';
-	if not found then
-		create policy "payout_runs_select_self_or_admin" on public.payout_runs for select using (seller_id = auth.uid() or public.is_admin());
-	end if;
-end $$;
-do $$ begin
-	perform 1 from pg_policies where schemaname='public' and tablename='payout_runs' and policyname='payout_runs_admin_write';
-	if not found then
-		create policy "payout_runs_admin_write" on public.payout_runs for all using (public.is_admin()) with check (public.is_admin());
-	end if;
-end $$;
 
 -- Payout items
 create table if not exists public.payout_items (
@@ -196,26 +122,8 @@ create table if not exists public.payout_items (
 	constraint unique_run_log unique (payout_run_id, log_id)
 );
 alter table public.payout_items enable row level security;
-do $$ begin
-	perform 1 from pg_policies where schemaname='public' and tablename='payout_items' and policyname='payout_items_select_self_or_admin';
-	if not found then
-		create policy "payout_items_select_self_or_admin" on public.payout_items
-			for select using (
-				exists (
-					select 1 from public.payout_runs pr
-					where pr.id = payout_run_id and (pr.seller_id = auth.uid() or public.is_admin())
-				)
-			);
-	end if;
-end $$;
-do $$ begin
-	perform 1 from pg_policies where schemaname='public' and tablename='payout_items' and policyname='payout_items_admin_write';
-	if not found then
-		create policy "payout_items_admin_write" on public.payout_items for all using (public.is_admin()) with check (public.is_admin());
-	end if;
-end $$;
 
--- RPC for aggregate stats (admin-only; respects RLS via policy checks)
+-- RPC for aggregate stats
 create or replace function public.aggregate_stats(p_start timestamptz, p_end timestamptz)
 returns table (
 	total_branded_sold int,
@@ -226,10 +134,7 @@ returns table (
 	total_monthly_bonus numeric,
 	final_total_payout numeric
 )
-language sql
-security definer
-set search_path = public
-as $$
+language sql security definer set search_path = public as $$
 	with logs as (
 		select * from public.logged_sessions
 		where start_time >= p_start and end_time <= p_end
@@ -241,8 +146,8 @@ as $$
 	),
 	base_pay as (
 		select case when (select pay_type from base_cfg) = 'per_hour'
-								then coalesce(sum((duration_minutes::numeric/60.0) * (select amount from base_cfg)), 0)
-								else coalesce(count(*) * (select amount from base_cfg), 0) end as total
+						then coalesce(sum((duration_minutes::numeric/60.0) * (select amount from base_cfg)), 0)
+						else coalesce(count(*) * (select amount from base_cfg), 0) end as total
 		from logs
 	),
 	payout as (
@@ -254,20 +159,19 @@ as $$
 		where start_date >= p_start::date and end_date <= p_end::date
 	)
 	select
-		coalesce((select sum(branded_sold) from logs), 0)::int as total_branded_sold,
-		coalesce((select sum(free_size_sold) from logs), 0)::int as total_freesize_sold,
-		coalesce((select total from base_pay), 0) as total_base_pay,
-		(select daily from payout) as total_daily_bonus,
-		(select weekly from payout) as total_weekly_bonus,
-		(select monthly from payout) as total_monthly_bonus,
-		(select final from payout) as final_total_payout;
+		coalesce((select sum(branded_sold) from logs), 0)::int,
+		coalesce((select sum(free_size_sold) from logs), 0)::int,
+		coalesce((select total from base_pay), 0),
+		(select daily from payout),
+		(select weekly from payout),
+		(select monthly from payout),
+		(select final from payout);
 $$;
 
--- Restrict aggregate_stats to admin only
 revoke all on function public.aggregate_stats(timestamptz, timestamptz) from public;
 grant execute on function public.aggregate_stats(timestamptz, timestamptz) to authenticated;
 
--- Seeds (safe upserts)
+-- Seeds
 insert into public.app_settings(key, value)
 values ('base_pay', jsonb_build_object('type','per_hour','amount', 60))
 on conflict (key) do update set value = excluded.value, updated_at = now();
