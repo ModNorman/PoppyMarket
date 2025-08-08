@@ -22,11 +22,34 @@ function groupBy<T>(arr: T[], key: (t:T)=>string){
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
-  const supabase = createClient(
-    Deno.env.get("SUPABASE_URL")!,
-    Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-  );
+  const url = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || serviceKey;
+
+  const supabase = createClient(url, serviceKey);
+  // Auth: accept either a user JWT or the service role key (internal)
+  const authHeader = req.headers.get("authorization") || req.headers.get("Authorization") || "";
+  if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+  const token = authHeader.replace(/^[Bb]earer\s+/,'');
+
+  let isAdmin = false;
+  let userId: string | null = null;
+  if (token === serviceKey) {
+    // Internal service call: treat as admin
+    isAdmin = true;
+  } else {
+    const supabaseAuth = createClient(url, anonKey, { global: { headers: { Authorization: `Bearer ${token}` } } });
+    const { data: userData, error: userErr } = await supabaseAuth.auth.getUser();
+    if (userErr || !userData?.user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+    userId = userData.user.id;
+    // check profile role
+    const { data: prof } = await supabase.from("profiles").select("role").eq("id", userId).maybeSingle();
+    isAdmin = prof?.role === 'admin';
+  }
+
   const { startDate, endDate, sellerId } = await req.json();
+  if (!startDate || !endDate || !sellerId) return new Response(JSON.stringify({ error: "startDate, endDate, sellerId required" }), { status: 400, headers: corsHeaders });
+  if (!isAdmin && userId && sellerId !== userId) return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
 
   // load configs
   const { data: cfgs } = await supabase.from("bonus_configs").select("*");

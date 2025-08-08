@@ -12,8 +12,27 @@ const corsHeaders = {
 
 serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  const url = Deno.env.get("SUPABASE_URL")!;
+  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const anonKey = Deno.env.get("SUPABASE_ANON_KEY") || serviceKey;
 
-  const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+  const supabase = createClient(url, serviceKey);
+
+  // Auth: admin only (or internal service key)
+  const authHeader = req.headers.get("authorization") || req.headers.get("Authorization") || "";
+  if (!authHeader) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+  const token = authHeader.replace(/^[Bb]earer\s+/, '');
+  let isAdmin = false;
+  if (token === serviceKey) {
+    isAdmin = true;
+  } else {
+    const supabaseAuth = createClient(url, anonKey, { global: { headers: { Authorization: `Bearer ${token}` } } });
+    const { data: userData, error: userErr } = await supabaseAuth.auth.getUser();
+    if (userErr || !userData?.user) return new Response(JSON.stringify({ error: "Unauthorized" }), { status: 401, headers: corsHeaders });
+    const { data: prof } = await supabase.from("profiles").select("role").eq("id", userData.user.id).maybeSingle();
+    isAdmin = prof?.role === 'admin';
+  }
+  if (!isAdmin) return new Response(JSON.stringify({ error: "Forbidden" }), { status: 403, headers: corsHeaders });
   const { startDate, endDate } = await req.json();
   const { data, error } = await supabase.rpc("aggregate_stats", { p_start: startDate, p_end: endDate });
   if (error) return new Response(JSON.stringify({ error: error.message }), { status: 400, headers: corsHeaders });
