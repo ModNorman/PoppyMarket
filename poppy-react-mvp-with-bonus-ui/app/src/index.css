@@ -1,0 +1,9 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+:root{ --card-bg: rgba(255,255,255,0.6); --blur: 16px }
+.card{ @apply rounded-2xl shadow-soft backdrop-blur-[var(--blur)] bg-[var(--card-bg)] border border-white/40; }
+.stat{ @apply card p-4 lg:p-6; }
+.btn{ @apply inline-flex items-center justify-center rounded-xl px-4 py-2 font-medium shadow-soft hover:shadow; }
+.input{ @apply w-full rounded-xl border border-stone-200 bg-white/70 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-rose-300; }
+.table{ @apply w-full text-sm; }

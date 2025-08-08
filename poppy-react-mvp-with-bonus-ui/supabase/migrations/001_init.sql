@@ -1,0 +1,1 @@
+-- Use the migration from the spec (identical to 001_init.sql previously provided).
