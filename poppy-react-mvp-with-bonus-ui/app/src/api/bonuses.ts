@@ -18,5 +18,6 @@ export async function calculateBonuses(body: any){
 export async function aggregateStats(body: any){
   const { data, error } = await supabase.functions.invoke('get-aggregate-stats', { body })
   if (error) throw error
-  return data
+  // RPC may return an array of rows when using RETURNS TABLE; unwrap to first row
+  return Array.isArray(data) ? (data[0] || null) : data
 }

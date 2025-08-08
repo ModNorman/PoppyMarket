@@ -9,14 +9,20 @@ export default function RegisterPage(){
   const [password, setPassword] = React.useState('')
   const [msg, setMsg] = React.useState<string | null>(null)
   const [error, setError] = React.useState<string | null>(null)
+  const [loading, setLoading] = React.useState(false)
 
   async function onSubmit(){
     setError(null)
     try {
+      if (!full_name) throw new Error('Full name is required')
+      if (!/.+@.+\..+/.test(email)) throw new Error('Enter a valid email')
+      if (password.length < 8) throw new Error('Password must be at least 8 characters')
+      setLoading(true)
       await signUp(email, password, full_name)
       setMsg('Check your email to verify your account.')
       setTimeout(()=> nav('/login'), 1500)
     } catch (e: any) { setError(e.message) }
+    finally { setLoading(false) }
   }
 
   return (
@@ -27,7 +33,7 @@ export default function RegisterPage(){
       <input className="input mb-2" placeholder="Full name" value={full_name} onChange={e=>setName(e.target.value)} />
       <input className="input mb-2" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
       <input className="input mb-4" placeholder="Password" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
-      <button className="btn" onClick={onSubmit}>Create account</button>
+  <button className="btn" disabled={!full_name || !email || password.length<8 || loading} onClick={onSubmit}>{loading? 'Creating…' : 'Create account'}</button>
       <div className="mt-4 text-sm text-stone-600">Have an account? <Link className="underline" to="/login">Sign in</Link></div>
     </div>
   )

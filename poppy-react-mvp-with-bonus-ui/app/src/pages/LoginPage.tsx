@@ -9,10 +9,25 @@ export default function LoginPage(){
   const [email, setEmail] = React.useState('')
   const [password, setPassword] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
+  const [loading, setLoading] = React.useState(false)
 
+  // If a Supabase recovery link sent the user here with hash tokens, forward to /password-reset
+  React.useEffect(()=>{
+    const { search, hash } = window.location
+    const hasRecovery = (hash || '').includes('access_token=')
+    const hasCode = (search || '').includes('code=')
+    if (hasRecovery || hasCode){
+      window.location.replace(`/password-reset${search || ''}${hash || ''}`)
+    }
+  }, [])
+
+  const validEmail = /.+@.+\..+/.test(email)
   async function onSubmit(){
     setError(null)
     try {
+      if(!validEmail) throw new Error('Enter a valid email')
+      if(!password) throw new Error('Password is required')
+      setLoading(true)
       await signIn(email, password)
       const { data: { user } } = await supabase.auth.getUser()
       if(!user) return
@@ -21,6 +36,7 @@ export default function LoginPage(){
       useSessionStore.getState().setProfile(profile as any)
       if (profile.role === 'admin') nav('/admin'); else nav('/seller')
     } catch (e: any) { setError(e.message) }
+    finally { setLoading(false) }
   }
 
   return (
@@ -29,8 +45,12 @@ export default function LoginPage(){
       {error && <div className="text-red-600 mb-2">{error}</div>}
       <input className="input mb-2" placeholder="Email" value={email} onChange={e=>setEmail(e.target.value)} />
       <input className="input mb-4" placeholder="Password" type="password" value={password} onChange={e=>setPassword(e.target.value)} />
-      <button className="btn" onClick={onSubmit}>Sign in</button>
-      <div className="mt-4 text-sm text-stone-600">No account? <Link className="underline" to="/register">Register</Link></div>
+  <button className="btn" disabled={!validEmail || !password || loading} onClick={onSubmit}>{loading? 'Signing in…' : 'Sign in'}</button>
+      <div className="mt-4 text-sm text-stone-600">
+        No account? <Link className="underline" to="/register">Register</Link>
+        <span className="mx-2">·</span>
+        <Link className="underline" to="/forgot-password">Forgot password?</Link>
+      </div>
     </div>
   )
 }
